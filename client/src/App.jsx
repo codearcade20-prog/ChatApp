@@ -2,19 +2,43 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Dashboard from './components/Dashboard';
 
-const API_URL = 'https://fb0e20b7407c96bc-122-183-50-183.serveousercontent.com/api/auth';
+const API_URL = 'https://98d056aa2472be16-122-183-50-63.serveousercontent.com/api/auth';
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [token, setToken] = useState(() => {
+    const savedToken = localStorage.getItem('token') || '';
+    if (savedToken) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
+    }
+    return savedToken;
+  });
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || 'null'));
   
   const [isLoginTab, setIsLoginTab] = useState(true);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phone, setPhone] = useState('');
+  const [photo, setPhoto] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 1.5 * 1024 * 1024) {
+        setError('Profile picture must be under 1.5 MB');
+        e.target.value = null;
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhoto(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Configure axios defaults when token changes
   useEffect(() => {
@@ -26,6 +50,22 @@ function App() {
       localStorage.removeItem('token');
     }
   }, [token]);
+
+  // Global Axios interceptor to auto-logout on 401 Unauthorized (e.g. stale tokens after server reset)
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response && error.response.status === 401) {
+          handleLogout();
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -53,17 +93,22 @@ function App() {
         // Login API Call
         const response = await axios.post(`${API_URL}/login`, { email, password });
         if (response.data.success) {
-          const { token, ...userData } = response.data.data;
-          setToken(token);
+          const { token: userToken, ...userData } = response.data.data;
+          axios.defaults.headers.common['Authorization'] = `Bearer ${userToken}`;
+          setToken(userToken);
           setUser(userData);
           setSuccess('Welcome back!');
         }
       } else {
         // Register API Call
-        const response = await axios.post(`${API_URL}/register`, { name, email, password });
+        if (phone.length !== 10) {
+          return setError('Phone number must be exactly 10 digits');
+        }
+        const response = await axios.post(`${API_URL}/register`, { name, email, password, phone, photo });
         if (response.data.success) {
-          const { token, ...userData } = response.data.data;
-          setToken(token);
+          const { token: userToken, ...userData } = response.data.data;
+          axios.defaults.headers.common['Authorization'] = `Bearer ${userToken}`;
+          setToken(userToken);
           setUser(userData);
           setSuccess('Account created successfully!');
         }
@@ -90,13 +135,13 @@ function App() {
       <div className="auth-tabs">
         <button
           className={`auth-tab ${isLoginTab ? 'active' : ''}`}
-          onClick={() => { setIsLoginTab(true); setError(''); setSuccess(''); }}
+          onClick={() => { setIsLoginTab(true); setError(''); setSuccess(''); setPhone(''); setPhoto(''); }}
         >
           Sign In
         </button>
         <button
           className={`auth-tab ${!isLoginTab ? 'active' : ''}`}
-          onClick={() => { setIsLoginTab(false); setError(''); setSuccess(''); }}
+          onClick={() => { setIsLoginTab(false); setError(''); setSuccess(''); setPhone(''); setPhoto(''); }}
         >
           Register
         </button>
@@ -107,17 +152,51 @@ function App() {
 
       <form onSubmit={handleAuthSubmit}>
         {!isLoginTab && (
-          <div className="form-group">
-            <label className="form-label">Full Name</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="John Doe"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
+          <>
+            <div className="form-group">
+              <label className="form-label">Full Name</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Phone Number (Mandatory - 10 digits)</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. 9876543210"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Profile Photo (Optional)</label>
+              <input
+                type="file"
+                className="form-input"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                style={{ padding: '0.45rem' }}
+              />
+              {photo && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '0.5rem' }}>
+                  <img
+                    src={photo}
+                    alt="Preview"
+                    style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid #25d366' }}
+                  />
+                </div>
+              )}
+            </div>
+          </>
         )}
 
         <div className="form-group">

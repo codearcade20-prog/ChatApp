@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { encrypt, decrypt } from '../utils/crypto.js';
 
 const messageSchema = new mongoose.Schema(
   {
@@ -11,6 +12,8 @@ const messageSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Message text is required'],
       trim: true,
+      get: decrypt,
+      set: encrypt,
     },
     status: {
       type: String,
@@ -22,8 +25,17 @@ const messageSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    recipient: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Recipient is required'],
+    },
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    toJSON: { getters: true },
+    toObject: { getters: true }
+  }
 );
 
 const Message = mongoose.model('Message', messageSchema);

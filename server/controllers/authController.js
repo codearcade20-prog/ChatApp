@@ -12,22 +12,29 @@ const generateToken = (id) => {
 // @route   POST /api/auth/register
 // @access  Public
 export const registerUser = async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, phone, photo } = req.body;
 
   try {
-    if (!name || !email || !password) {
-      return res.status(400).json({ success: false, error: 'Please provide name, email and password' });
+    if (!name || !email || !password || !phone) {
+      return res.status(400).json({ success: false, error: 'Please provide name, email, password and phone number' });
     }
 
-    const userExists = await User.findOne({ email });
+    // Phone number format validation (exactly 10 digits)
+    if (!/^\d{10}$/.test(phone)) {
+      return res.status(400).json({ success: false, error: 'Phone number must be exactly 10 digits' });
+    }
+
+    const userExists = await User.findOne({ $or: [{ email }, { phone }] });
     if (userExists) {
-      return res.status(400).json({ success: false, error: 'User already exists' });
+      return res.status(400).json({ success: false, error: 'User with this email or phone number already exists' });
     }
 
     const user = await User.create({
       name,
       email,
       password,
+      phone,
+      photo: photo || '',
     });
 
     if (user) {
@@ -37,6 +44,8 @@ export const registerUser = async (req, res) => {
           _id: user._id,
           name: user.name,
           email: user.email,
+          phone: user.phone,
+          photo: user.photo,
           token: generateToken(user._id),
         },
       });
@@ -68,6 +77,8 @@ export const loginUser = async (req, res) => {
           _id: user._id,
           name: user.name,
           email: user.email,
+          phone: user.phone,
+          photo: user.photo,
           token: generateToken(user._id),
         },
       });
@@ -79,3 +90,22 @@ export const loginUser = async (req, res) => {
     res.status(500).json({ success: false, error: error.message || 'Server error' });
   }
 };
+
+// @desc    Get all registered contacts (excluding self)
+// @route   GET /api/auth/contacts
+// @access  Private
+export const getContacts = async (req, res) => {
+  try {
+    const contacts = await User.find({ _id: { $ne: req.user._id } })
+      .select('-password')
+      .sort({ name: 1 });
+    res.json({
+      success: true,
+      data: contacts,
+    });
+  } catch (error) {
+    console.error('GetContacts error:', error);
+    res.status(500).json({ success: false, error: error.message || 'Server error' });
+  }
+};
+
